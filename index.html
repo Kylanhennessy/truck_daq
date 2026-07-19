@@ -87,6 +87,7 @@
         }
 
         #fullscreen-btn { background-color: #555555; }
+        #sim-btn { background-color: #f57c00; color: #121212; }
         #connect-btn { background-color: #2e7d32; }
         #connect-btn.connected { background-color: #c62828; }
         
@@ -139,8 +140,7 @@
         .bg-track { fill: none; stroke: #2d2d2d; stroke-width: 8; }
         .value-track { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease, stroke 0.3s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
         
-        /* Updated digital value base style, color is now injected dynamically */
-        .digital-value { font-size: 1.4rem; font-weight: 800; margin-top: 2px; font-family: monospace; }
+        .digital-value { font-size: 1.4rem; font-weight: 800; margin-top: 2px; font-family: monospace; transition: color 0.3s ease; }
         .unit { font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-left: 2px; }
         
         footer {
@@ -166,6 +166,7 @@
             <button id="fullscreen-btn">FULL SCREEN</button>
             <button id="clear-btn">CLEAR</button>
             <button id="download-btn" disabled>SAVE .TXT</button>
+            <button id="sim-btn">SIMULATE</button>
             <button id="connect-btn">CONNECT</button>
         </div>
     </header>
@@ -175,7 +176,6 @@
             <div class="label">X-OVER COOLANT</div>
             <svg class="gauge-svg" viewBox="0 0 100 100">
                 <circle class="bg-track" cx="50" cy="50" r="40"></circle>
-                <!-- Initial color set to state-good, will update dynamically -->
                 <circle class="value-track" id="dial-xover" cx="50" cy="50" r="40" stroke="var(--state-good)"></circle>
             </svg>
             <div class="digital-value"><span id="val-xover" style="color: var(--state-good);">---</span><span class="unit">°F</span></div>
@@ -224,6 +224,7 @@
         const connectBtn = document.getElementById('connect-btn');
         const downloadBtn = document.getElementById('download-btn');
         const clearBtn = document.getElementById('clear-btn');
+        const simBtn = document.getElementById('sim-btn');
         const heartbeat = document.getElementById('heartbeat');
         
         let port;
@@ -271,13 +272,52 @@
             dial.style.strokeDashoffset = CIRCUMFERENCE;
         });
 
-        // Configured Limits: 'warn' triggers Yellow, 'alarm' triggers Red
         const LIMITS = {
             xover: { min: 100, max: 240, warn: 215.0, alarm: 225.0 },
             oilu:  { min: 100, max: 270, warn: 235.0, alarm: 250.0 },
             oill:  { min: 100, max: 270, warn: 235.0, alarm: 250.0 },
-            amb:   { min: 50,  max: 180 } // No warnings or alarms for ambient
+            amb:   { min: 50,  max: 180 } 
         };
+
+        // --- SIMULATION LOGIC ---
+        let simInterval = null;
+        let simTime = 0;
+        let simXover = 190, simOilU = 210, simOilL = 205, simAmb = 85;
+        let simDirection = 1;
+
+        simBtn.addEventListener('click', () => {
+            if (simInterval) {
+                clearInterval(simInterval);
+                simInterval = null;
+                simBtn.textContent = "SIMULATE";
+                simBtn.style.backgroundColor = "#f57c00";
+                simBtn.style.color = "#121212";
+            } else {
+                simBtn.textContent = "STOP SIM";
+                simBtn.style.backgroundColor = "#c62828";
+                simBtn.style.color = "#ffffff";
+                
+                simInterval = setInterval(() => {
+                    simTime += 0.5;
+                    
+                    // Increment/Decrement temps
+                    simXover += (0.8 * simDirection);
+                    simOilU += (1.5 * simDirection);
+                    simOilL += (1.2 * simDirection);
+                    simAmb += (0.1 * simDirection);
+                    
+                    // Reverse the thermal cycle if we hit the top or bottom of the swing
+                    if (simOilU > 260 || simOilU < 200) simDirection *= -1;
+
+                    // Generate a fake serial string that matches what the Arduino outputs
+                    const simLine = `${simTime.toFixed(1)}s X-OVER: ${simXover.toFixed(1)} OIL-U: ${simOilU.toFixed(1)} OIL-L: ${simOilL.toFixed(1)} AMB: ${simAmb.toFixed(1)} SW: 0`;
+                    
+                    // Feed the fake string directly into the parser
+                    parseAndExtractData(simLine);
+                }, 500); // Trigger every half second
+            }
+        });
+        // ------------------------
 
         async function requestWakeLock() {
             try {
@@ -421,22 +461,18 @@
             const offset = CIRCUMFERENCE - (percent * CIRCUMFERENCE);
             dialElement.style.strokeDashoffset = offset;
 
-            // Handle the stage-based coloring logic
             if (key === 'amb') {
-                // Ambient remains a static color, text stays default white
                 dialElement.style.stroke = "var(--amb-color)";
                 textElement.style.color = "var(--text-color)";
             } else {
-                // Determine fluid state color
-                let colorVar = "var(--state-good)"; // Default to Green
+                let colorVar = "var(--state-good)"; 
                 
                 if (val >= cfg.alarm) {
-                    colorVar = "var(--state-alarm)"; // Trigger Red
+                    colorVar = "var(--state-alarm)"; 
                 } else if (val >= cfg.warn) {
-                    colorVar = "var(--state-warn)";  // Trigger Yellow
+                    colorVar = "var(--state-warn)";  
                 }
                 
-                // Apply dynamic color to both gauge ring and text string
                 dialElement.style.stroke = colorVar;
                 textElement.style.color = colorVar;
             }
