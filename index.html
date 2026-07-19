@@ -84,6 +84,7 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         }
 
+        #fullscreen-btn { background-color: #555555; }
         #connect-btn { background-color: #2e7d32; }
         #connect-btn.connected { background-color: #c62828; }
         
@@ -188,6 +189,7 @@
             <div id="heartbeat" class="heartbeat"></div>
         </div>
         <div class="btn-group">
+            <button id="fullscreen-btn">FULL SCREEN</button>
             <button id="clear-btn">CLEAR</button>
             <button id="download-btn" disabled>SAVE .TXT</button>
             <button id="connect-btn">CONNECT</button>
@@ -249,6 +251,7 @@
     </div>
 
     <script>
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
         const connectBtn = document.getElementById('connect-btn');
         const downloadBtn = document.getElementById('download-btn');
         const clearBtn = document.getElementById('clear-btn');
@@ -273,6 +276,18 @@
             document.getElementById('log-count').textContent = textLogs.length - 1;
             if (textLogs.length > 1) downloadBtn.disabled = false;
         }
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    alert(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+                fullscreenBtn.textContent = "EXIT FULL";
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = "FULL SCREEN";
+            }
+        });
 
         clearBtn.addEventListener('click', () => {
             if(confirm("Erase all saved telemetry data?")) {
