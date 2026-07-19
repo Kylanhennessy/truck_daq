@@ -10,11 +10,13 @@
             --card-color: #1e1e1e;
             --text-color: #ffffff;
             --text-muted: #aaaaaa;
-            --coolant-color: #00cbd6;
-            --oil-color: #ff9f00;
             --amb-color: #a0a0a0;
             --delta-color: #8e24aa;
-            --alarm-color: #ff3333;
+            
+            /* New Stage Colors */
+            --state-good: #4caf50;
+            --state-warn: #ffeb3b;
+            --state-alarm: #ff3333;
         }
 
         body {
@@ -114,11 +116,6 @@
             border: 1px solid #2a2a2a;
         }
 
-        .card.alarm-active {
-            border: 2px solid var(--alarm-color);
-            background-color: rgba(255, 51, 51, 0.05);
-        }
-
         .delta-strip {
             width: 100%;
             max-width: 1000px;
@@ -140,7 +137,9 @@
         .label { font-size: 0.75rem; font-weight: bold; color: var(--text-muted); margin-bottom: 2px; letter-spacing: 0.5px; text-align: center; }
         .gauge-svg { width: 85%; height: auto; max-width: 110px; }
         .bg-track { fill: none; stroke: #2d2d2d; stroke-width: 8; }
-        .value-track { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
+        .value-track { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease, stroke 0.3s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
+        
+        /* Updated digital value base style, color is now injected dynamically */
         .digital-value { font-size: 1.4rem; font-weight: 800; margin-top: 2px; font-family: monospace; }
         .unit { font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-left: 2px; }
         
@@ -154,31 +153,6 @@
             display: flex;
             justify-content: space-between;
         }
-
-        #alarm-banner {
-            display: none; 
-            width: 100%;
-            max-width: 1000px;
-            background-color: rgba(255, 51, 51, 0.2);
-            border: 2px solid var(--alarm-color);
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 20px;
-            box-sizing: border-box;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
-            animation: pulse 1s infinite alternate;
-        }
-
-        @keyframes pulse {
-            from { box-shadow: 0 0 5px rgba(255,51,51,0.5); background-color: rgba(255, 51, 51, 0.1); }
-            to { box-shadow: 0 0 25px rgba(255,51,51,0.9); background-color: rgba(255, 51, 51, 0.4); }
-        }
-
-        #alarm-banner svg { width: 35px; height: 35px; fill: var(--alarm-color); flex-shrink: 0; }
-        #alarm-text { font-size: 1.2rem; font-weight: bold; color: #ffcccc; text-transform: uppercase; text-align: center; }
-
     </style>
 </head>
 <body>
@@ -201,9 +175,10 @@
             <div class="label">X-OVER COOLANT</div>
             <svg class="gauge-svg" viewBox="0 0 100 100">
                 <circle class="bg-track" cx="50" cy="50" r="40"></circle>
-                <circle class="value-track" id="dial-xover" cx="50" cy="50" r="40" stroke="var(--coolant-color)"></circle>
+                <!-- Initial color set to state-good, will update dynamically -->
+                <circle class="value-track" id="dial-xover" cx="50" cy="50" r="40" stroke="var(--state-good)"></circle>
             </svg>
-            <div class="digital-value"><span id="val-xover">---</span><span class="unit">°F</span></div>
+            <div class="digital-value"><span id="val-xover" style="color: var(--state-good);">---</span><span class="unit">°F</span></div>
         </div>
 
         <div class="card" id="card-amb">
@@ -219,18 +194,18 @@
             <div class="label">OIL-U (UPPER)</div>
             <svg class="gauge-svg" viewBox="0 0 100 100">
                 <circle class="bg-track" cx="50" cy="50" r="40"></circle>
-                <circle class="value-track" id="dial-oilu" cx="50" cy="50" r="40" stroke="var(--oil-color)"></circle>
+                <circle class="value-track" id="dial-oilu" cx="50" cy="50" r="40" stroke="var(--state-good)"></circle>
             </svg>
-            <div class="digital-value"><span id="val-oilu">---</span><span class="unit">°F</span></div>
+            <div class="digital-value"><span id="val-oilu" style="color: var(--state-good);">---</span><span class="unit">°F</span></div>
         </div>
 
         <div class="card" id="card-oill">
             <div class="label">OIL-L (LOWER)</div>
             <svg class="gauge-svg" viewBox="0 0 100 100">
                 <circle class="bg-track" cx="50" cy="50" r="40"></circle>
-                <circle class="value-track" id="dial-oill" cx="50" cy="50" r="40" stroke="var(--oil-color)"></circle>
+                <circle class="value-track" id="dial-oill" cx="50" cy="50" r="40" stroke="var(--state-good)"></circle>
             </svg>
-            <div class="digital-value"><span id="val-oill">---</span><span class="unit">°F</span></div>
+            <div class="digital-value"><span id="val-oill" style="color: var(--state-good);">---</span><span class="unit">°F</span></div>
         </div>
     </div>
 
@@ -244,20 +219,12 @@
         <div>Log Count: <span id="log-count">0</span> rows</div>
     </footer>
 
-    <!-- Banner moved to the bottom layout area -->
-    <div id="alarm-banner">
-        <svg viewBox="0 0 24 24"><path d="M1,21H23L12,2L1,21M13,18H11V16H13V18M13,14H11V10H13V14Z"/></svg>
-        <div id="alarm-text">OVERTEMP</div>
-    </div>
-
     <script>
         const fullscreenBtn = document.getElementById('fullscreen-btn');
         const connectBtn = document.getElementById('connect-btn');
         const downloadBtn = document.getElementById('download-btn');
         const clearBtn = document.getElementById('clear-btn');
         const heartbeat = document.getElementById('heartbeat');
-        const banner = document.getElementById('alarm-banner');
-        const alarmText = document.getElementById('alarm-text');
         
         let port;
         let reader;
@@ -304,11 +271,12 @@
             dial.style.strokeDashoffset = CIRCUMFERENCE;
         });
 
+        // Configured Limits: 'warn' triggers Yellow, 'alarm' triggers Red
         const LIMITS = {
-            xover: { min: 100, max: 240, alarm: 225.0 },
-            oilu:  { min: 100, max: 270, alarm: 250.0 },
-            oill:  { min: 100, max: 270, alarm: 250.0 },
-            amb:   { min: 50,  max: 180, alarm: 999.0 }
+            xover: { min: 100, max: 240, warn: 215.0, alarm: 225.0 },
+            oilu:  { min: 100, max: 270, warn: 235.0, alarm: 250.0 },
+            oill:  { min: 100, max: 270, warn: 235.0, alarm: 250.0 },
+            amb:   { min: 50,  max: 180 } // No warnings or alarms for ambient
         };
 
         async function requestWakeLock() {
@@ -413,23 +381,19 @@
 
             if (tMatch) document.getElementById('val-time').textContent = tMatch[1];
 
-            // Array to hold the names of any sensors that are currently overheating
-            let activeAlarms = [];
-
-            if (xoverMatch) {
-                if (updateGauge('xover', parseFloat(xoverMatch[1]))) activeAlarms.push("COOLANT");
-            }
+            if (xoverMatch) updateGauge('xover', parseFloat(xoverMatch[1]));
+            
             if (oiluMatch) {
                 lastOilU = parseFloat(oiluMatch[1]);
-                if (updateGauge('oilu', lastOilU)) activeAlarms.push("UPPER OIL");
+                updateGauge('oilu', lastOilU);
             }
+            
             if (oillMatch) {
                 lastOilL = parseFloat(oillMatch[1]);
-                if (updateGauge('oill', lastOilL)) activeAlarms.push("LOWER OIL");
+                updateGauge('oill', lastOilL);
             }
-            if (ambMatch) {
-                if (updateGauge('amb', parseFloat(ambMatch[1]))) activeAlarms.push("AMBIENT");
-            }
+            
+            if (ambMatch) updateGauge('amb', parseFloat(ambMatch[1]));
 
             if (lastOilU !== null && lastOilL !== null) {
                 const delta = lastOilU - lastOilL;
@@ -442,20 +406,11 @@
                 localStorage.setItem('daq_text_logs', JSON.stringify(textLogs));
                 document.getElementById('log-count').textContent = textLogs.length - 1;
             }
-
-            // Dynamic logic to display exactly what is overheating at the bottom
-            if (activeAlarms.length > 0) {
-                alarmText.textContent = activeAlarms.join(" & ") + " OVERTEMP";
-                banner.style.display = "flex"; // Switched to flex for layout
-            } else {
-                banner.style.display = "none";
-            }
         }
 
         function updateGauge(key, val) {
             const textElement = document.getElementById(`val-${key}`);
             const dialElement = document.getElementById(`dial-${key}`);
-            const cardElement = document.getElementById(`card-${key}`);
             
             textElement.textContent = val.toFixed(1);
             
@@ -466,15 +421,24 @@
             const offset = CIRCUMFERENCE - (percent * CIRCUMFERENCE);
             dialElement.style.strokeDashoffset = offset;
 
-            // Returns 'true' if the threshold is breached, telling parseAndExtractData to trigger the text
-            if (val >= cfg.alarm) {
-                cardElement.classList.add('alarm-active');
-                dialElement.style.stroke = "var(--alarm-color)";
-                return true;
+            // Handle the stage-based coloring logic
+            if (key === 'amb') {
+                // Ambient remains a static color, text stays default white
+                dialElement.style.stroke = "var(--amb-color)";
+                textElement.style.color = "var(--text-color)";
             } else {
-                cardElement.classList.remove('alarm-active');
-                dialElement.style.stroke = `var(--${key === 'xover' ? 'coolant' : key === 'amb' ? 'amb' : 'oil'}-color)`;
-                return false;
+                // Determine fluid state color
+                let colorVar = "var(--state-good)"; // Default to Green
+                
+                if (val >= cfg.alarm) {
+                    colorVar = "var(--state-alarm)"; // Trigger Red
+                } else if (val >= cfg.warn) {
+                    colorVar = "var(--state-warn)";  // Trigger Yellow
+                }
+                
+                // Apply dynamic color to both gauge ring and text string
+                dialElement.style.stroke = colorVar;
+                textElement.style.color = colorVar;
             }
         }
     </script>
