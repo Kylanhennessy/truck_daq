@@ -298,7 +298,7 @@
                 simBtn.style.color = "#ffffff";
                 
                 simInterval = setInterval(() => {
-                    simTime += 0.5;
+                    simTime += 2.0;
                     
                     // Increment/Decrement temps
                     simXover += (0.8 * simDirection);
@@ -314,7 +314,7 @@
                     
                     // Feed the fake string directly into the parser
                     parseAndExtractData(simLine);
-                }, 500); // Trigger every half second
+                }, 2000); // Trigger every 2 seconds
             }
         });
         // ------------------------
