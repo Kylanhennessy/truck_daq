@@ -36,7 +36,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 25px;
         }
 
         .title-group {
@@ -53,7 +53,6 @@
             color: var(--text-muted);
         }
 
-        /* The visual heartbeat indicator */
         .heartbeat {
             width: 12px;
             height: 12px;
@@ -91,28 +90,6 @@
         #download-btn:disabled { background-color: #444; color: #777; cursor: not-allowed; box-shadow: none; }
         
         #clear-btn { background-color: #8e24aa; }
-
-        #alarm-banner {
-            display: none;
-            width: 100%;
-            max-width: 600px;
-            background-color: rgba(255, 51, 51, 0.2);
-            border: 2px solid var(--alarm-color);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            box-sizing: border-box;
-            text-align: center;
-            animation: pulse 1s infinite alternate;
-        }
-
-        @keyframes pulse {
-            from { box-shadow: 0 0 5px rgba(255,51,51,0.5); background-color: rgba(255, 51, 51, 0.1); }
-            to { box-shadow: 0 0 25px rgba(255,51,51,0.9); background-color: rgba(255, 51, 51, 0.4); }
-        }
-
-        #alarm-banner svg { width: 40px; height: 40px; fill: var(--alarm-color); }
-        #alarm-text { font-size: 1.2rem; font-weight: bold; color: #ffcccc; margin-top: 5px; text-transform: uppercase; }
 
         .grid {
             display: grid;
@@ -174,6 +151,32 @@
             display: flex;
             justify-content: space-between;
         }
+
+        /* Moved to the bottom and stylized for a dynamic flex layout */
+        #alarm-banner {
+            display: none; 
+            width: 100%;
+            max-width: 600px;
+            background-color: rgba(255, 51, 51, 0.2);
+            border: 2px solid var(--alarm-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            box-sizing: border-box;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { box-shadow: 0 0 5px rgba(255,51,51,0.5); background-color: rgba(255, 51, 51, 0.1); }
+            to { box-shadow: 0 0 25px rgba(255,51,51,0.9); background-color: rgba(255, 51, 51, 0.4); }
+        }
+
+        #alarm-banner svg { width: 35px; height: 35px; fill: var(--alarm-color); flex-shrink: 0; }
+        #alarm-text { font-size: 1.2rem; font-weight: bold; color: #ffcccc; text-transform: uppercase; text-align: center; }
+
     </style>
 </head>
 <body>
@@ -189,11 +192,6 @@
             <button id="connect-btn">CONNECT</button>
         </div>
     </header>
-
-    <div id="alarm-banner">
-        <svg viewBox="0 0 24 24"><path d="M1,21H23L12,2L1,21M13,18H11V16H13V18M13,14H11V10H13V14Z"/></svg>
-        <div id="alarm-text">OVERHEAT WARNING</div>
-    </div>
 
     <div class="grid">
         <div class="card" id="card-xover">
@@ -243,11 +241,19 @@
         <div>Log Count: <span id="log-count">0</span> rows</div>
     </footer>
 
+    <!-- Banner moved to the bottom layout area -->
+    <div id="alarm-banner">
+        <svg viewBox="0 0 24 24"><path d="M1,21H23L12,2L1,21M13,18H11V16H13V18M13,14H11V10H13V14Z"/></svg>
+        <div id="alarm-text">OVERTEMP</div>
+    </div>
+
     <script>
         const connectBtn = document.getElementById('connect-btn');
         const downloadBtn = document.getElementById('download-btn');
         const clearBtn = document.getElementById('clear-btn');
         const heartbeat = document.getElementById('heartbeat');
+        const banner = document.getElementById('alarm-banner');
+        const alarmText = document.getElementById('alarm-text');
         
         let port;
         let reader;
@@ -257,12 +263,9 @@
         let lastOilU = null;
         let lastOilL = null;
 
-        // Base array structure
         const headerRow = "Time_Sec,X-OVER_Avg,OIL-U_Avg,OIL-L_Avg,AMB_Avg,Event_Trigger";
         let textLogs = [headerRow];
 
-        // --- FEATURE: LocalStorage Restore ---
-        // Check if data survived a crash or refresh and load it
         const savedLogs = localStorage.getItem('daq_text_logs');
         if (savedLogs) {
             textLogs = JSON.parse(savedLogs);
@@ -270,7 +273,6 @@
             if (textLogs.length > 1) downloadBtn.disabled = false;
         }
 
-        // --- FEATURE: Clear Log ---
         clearBtn.addEventListener('click', () => {
             if(confirm("Erase all saved telemetry data?")) {
                 textLogs = [headerRow];
@@ -293,7 +295,6 @@
             amb:   { min: 50,  max: 180, alarm: 999.0 }
         };
 
-        // --- FEATURE: Screen Wake Lock ---
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
@@ -330,19 +331,16 @@
                 connectBtn.classList.add('connected');
                 downloadBtn.disabled = false;
                 
-                requestWakeLock(); // Keep screen alive
+                requestWakeLock();
                 readSerialLoop();
             } catch (err) {
                 alert("Serial Connection Failed: " + err.message);
             }
         });
 
-        // --- FEATURE: .TXT Download ---
         downloadBtn.addEventListener('click', () => {
             if (textLogs.length <= 1) return;
-            
             const fileContent = textLogs.join("\n");
-            // Switched to text/plain for universal reading
             const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             
@@ -350,7 +348,6 @@
             const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, "-");
             
             link.setAttribute("href", url);
-            // Save strictly as a text file
             link.setAttribute("download", `daq_run_${timestamp}.txt`);
             link.style.visibility = 'hidden';
             
@@ -388,8 +385,6 @@
         function parseAndExtractData(line) {
             if (!line.includes("X-OVER:")) return;
 
-            // --- FEATURE: Visual Heartbeat ---
-            // Flashes the green dot to confirm data is actively streaming
             heartbeat.classList.add('active');
             setTimeout(() => { heartbeat.classList.remove('active'); }, 150);
 
@@ -402,20 +397,23 @@
 
             if (tMatch) document.getElementById('val-time').textContent = tMatch[1];
 
-            let masterAlarmStatus = false;
+            // Array to hold the names of any sensors that are currently overheating
+            let activeAlarms = [];
 
-            if (xoverMatch) masterAlarmStatus |= updateGauge('xover', parseFloat(xoverMatch[1]));
-            
+            if (xoverMatch) {
+                if (updateGauge('xover', parseFloat(xoverMatch[1]))) activeAlarms.push("COOLANT");
+            }
             if (oiluMatch) {
                 lastOilU = parseFloat(oiluMatch[1]);
-                masterAlarmStatus |= updateGauge('oilu', lastOilU);
+                if (updateGauge('oilu', lastOilU)) activeAlarms.push("UPPER OIL");
             }
             if (oillMatch) {
                 lastOilL = parseFloat(oillMatch[1]);
-                masterAlarmStatus |= updateGauge('oill', lastOilL);
+                if (updateGauge('oill', lastOilL)) activeAlarms.push("LOWER OIL");
             }
-            
-            if (ambMatch) updateGauge('amb', parseFloat(ambMatch[1]));
+            if (ambMatch) {
+                if (updateGauge('amb', parseFloat(ambMatch[1]))) activeAlarms.push("AMBIENT");
+            }
 
             if (lastOilU !== null && lastOilL !== null) {
                 const delta = lastOilU - lastOilL;
@@ -425,17 +423,14 @@
             if (tMatch && xoverMatch && oiluMatch && oillMatch && ambMatch && swMatch) {
                 const textRow = `${tMatch[1]},${xoverMatch[1]},${oiluMatch[1]},${oillMatch[1]},${ambMatch[1]},${swMatch[1]}`;
                 textLogs.push(textRow);
-                
-                // --- FEATURE: Continuous LocalStorage Backup ---
-                // Saves the array to browser memory every single reading
                 localStorage.setItem('daq_text_logs', JSON.stringify(textLogs));
-                
                 document.getElementById('log-count').textContent = textLogs.length - 1;
             }
 
-            const banner = document.getElementById('alarm-banner');
-            if (masterAlarmStatus) {
-                banner.style.display = "block";
+            // Dynamic logic to display exactly what is overheating at the bottom
+            if (activeAlarms.length > 0) {
+                alarmText.textContent = activeAlarms.join(" & ") + " OVERTEMP";
+                banner.style.display = "flex"; // Switched to flex for layout
             } else {
                 banner.style.display = "none";
             }
@@ -455,6 +450,7 @@
             const offset = CIRCUMFERENCE - (percent * CIRCUMFERENCE);
             dialElement.style.strokeDashoffset = offset;
 
+            // Returns 'true' if the threshold is breached, telling parseAndExtractData to trigger the text
             if (val >= cfg.alarm) {
                 cardElement.classList.add('alarm-active');
                 dialElement.style.stroke = "var(--alarm-color)";
