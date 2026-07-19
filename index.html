@@ -39,6 +39,12 @@
             margin-bottom: 15px;
         }
 
+        .title-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
         h1 {
             margin: 0;
             font-size: 1.2rem;
@@ -47,16 +53,31 @@
             color: var(--text-muted);
         }
 
+        /* The visual heartbeat indicator */
+        .heartbeat {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #444;
+            transition: background-color 0.1s ease;
+        }
+        .heartbeat.active {
+            background-color: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
+        }
+
         .btn-group {
             display: flex;
-            gap: 10px;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         button {
             color: white;
             border: none;
-            padding: 10px 15px;
-            font-size: 0.9rem;
+            padding: 10px 12px;
+            font-size: 0.85rem;
             font-weight: bold;
             border-radius: 5px;
             cursor: pointer;
@@ -66,15 +87,10 @@
         #connect-btn { background-color: #2e7d32; }
         #connect-btn.connected { background-color: #c62828; }
         
-        #download-btn { 
-            background-color: #0288d1; 
-        }
-        #download-btn:disabled {
-            background-color: #444444;
-            color: #777777;
-            cursor: not-allowed;
-            box-shadow: none;
-        }
+        #download-btn { background-color: #0288d1; }
+        #download-btn:disabled { background-color: #444; color: #777; cursor: not-allowed; box-shadow: none; }
+        
+        #clear-btn { background-color: #8e24aa; }
 
         #alarm-banner {
             display: none;
@@ -141,7 +157,7 @@
 
         .delta-label { font-size: 1rem; font-weight: bold; color: var(--text-muted); letter-spacing: 0.5px; }
         .delta-value { font-size: 1.6rem; font-weight: 800; color: var(--delta-color); font-family: monospace; }
-        .label { font-size: 0.9rem; font-weight: bold; color: var(--text-muted); margin-bottom: 5px; letter-spacing: 0.5px; }
+        .label { font-size: 0.9rem; font-weight: bold; color: var(--text-muted); margin-bottom: 5px; letter-spacing: 0.5px; text-align: center; }
         .gauge-svg { width: 85%; height: auto; max-width: 140px; }
         .bg-track { fill: none; stroke: #2d2d2d; stroke-width: 8; }
         .value-track { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
@@ -163,10 +179,14 @@
 <body>
 
     <header>
-        <h1>DAQ Telemetry</h1>
+        <div class="title-group">
+            <h1>DAQ Telemetry</h1>
+            <div id="heartbeat" class="heartbeat"></div>
+        </div>
         <div class="btn-group">
+            <button id="clear-btn">CLEAR</button>
+            <button id="download-btn" disabled>SAVE .TXT</button>
             <button id="connect-btn">CONNECT</button>
-            <button id="download-btn" disabled>SAVE LOG</button>
         </div>
     </header>
 
@@ -226,15 +246,39 @@
     <script>
         const connectBtn = document.getElementById('connect-btn');
         const downloadBtn = document.getElementById('download-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const heartbeat = document.getElementById('heartbeat');
+        
         let port;
         let reader;
         let inputBuffer = "";
+        let wakeLock = null;
 
         let lastOilU = null;
         let lastOilL = null;
 
-        // Comma-separated structure array mirroring your target layout
-        let csvLogs = ["Time_Sec,X-OVER_Avg,OIL-U_Avg,OIL-L_Avg,AMB_Avg,Event_Trigger"];
+        // Base array structure
+        const headerRow = "Time_Sec,X-OVER_Avg,OIL-U_Avg,OIL-L_Avg,AMB_Avg,Event_Trigger";
+        let textLogs = [headerRow];
+
+        // --- FEATURE: LocalStorage Restore ---
+        // Check if data survived a crash or refresh and load it
+        const savedLogs = localStorage.getItem('daq_text_logs');
+        if (savedLogs) {
+            textLogs = JSON.parse(savedLogs);
+            document.getElementById('log-count').textContent = textLogs.length - 1;
+            if (textLogs.length > 1) downloadBtn.disabled = false;
+        }
+
+        // --- FEATURE: Clear Log ---
+        clearBtn.addEventListener('click', () => {
+            if(confirm("Erase all saved telemetry data?")) {
+                textLogs = [headerRow];
+                localStorage.removeItem('daq_text_logs');
+                document.getElementById('log-count').textContent = "0";
+                downloadBtn.disabled = true;
+            }
+        });
 
         const CIRCUMFERENCE = 2 * Math.PI * 40;
         document.querySelectorAll('.value-track').forEach(dial => {
@@ -249,6 +293,23 @@
             amb:   { min: 50,  max: 180, alarm: 999.0 }
         };
 
+        // --- FEATURE: Screen Wake Lock ---
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.warn('Wake Lock error:', err);
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock !== null) {
+                wakeLock.release().then(() => { wakeLock = null; });
+            }
+        }
+
         connectBtn.addEventListener('click', async () => {
             if (port) {
                 try {
@@ -258,6 +319,7 @@
                 port = null;
                 connectBtn.textContent = "CONNECT";
                 connectBtn.classList.remove('connected');
+                releaseWakeLock();
                 return;
             }
 
@@ -266,27 +328,30 @@
                 await port.open({ baudRate: 9600 });
                 connectBtn.textContent = "DISCONNECT";
                 connectBtn.classList.add('connected');
-                downloadBtn.disabled = false; // Enable saving once connected
+                downloadBtn.disabled = false;
                 
+                requestWakeLock(); // Keep screen alive
                 readSerialLoop();
             } catch (err) {
                 alert("Serial Connection Failed: " + err.message);
             }
         });
 
-        // Click Handler to download file directly to mobile device files app
+        // --- FEATURE: .TXT Download ---
         downloadBtn.addEventListener('click', () => {
-            if (csvLogs.length <= 1) return;
+            if (textLogs.length <= 1) return;
             
-            const fileContent = csvLogs.join("\n");
-            const blob = new Blob([fileContent], { type: 'text/csv;charset=utf-8;' });
+            const fileContent = textLogs.join("\n");
+            // Switched to text/plain for universal reading
+            const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             
             const link = document.createElement("a");
             const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, "-");
             
             link.setAttribute("href", url);
-            link.setAttribute("download", `daq_run_${timestamp}.csv`);
+            // Save strictly as a text file
+            link.setAttribute("download", `daq_run_${timestamp}.txt`);
             link.style.visibility = 'hidden';
             
             document.body.appendChild(link);
@@ -323,6 +388,11 @@
         function parseAndExtractData(line) {
             if (!line.includes("X-OVER:")) return;
 
+            // --- FEATURE: Visual Heartbeat ---
+            // Flashes the green dot to confirm data is actively streaming
+            heartbeat.classList.add('active');
+            setTimeout(() => { heartbeat.classList.remove('active'); }, 150);
+
             const tMatch = line.match(/^([\d.]+)s/);
             const xoverMatch = line.match(/X-OVER:\s*([\d.]+)/);
             const oiluMatch = line.match(/OIL-U:\s*([\d.]+)/);
@@ -352,11 +422,15 @@
                 document.getElementById('val-delta').textContent = delta.toFixed(1);
             }
 
-            // Append structured dataset to logging buffer
             if (tMatch && xoverMatch && oiluMatch && oillMatch && ambMatch && swMatch) {
-                const csvRow = `${tMatch[1]},${xoverMatch[1]},${oiluMatch[1]},${oillMatch[1]},${ambMatch[1]},${swMatch[1]}`;
-                csvLogs.push(csvRow);
-                document.getElementById('log-count').textContent = csvLogs.length - 1;
+                const textRow = `${tMatch[1]},${xoverMatch[1]},${oiluMatch[1]},${oillMatch[1]},${ambMatch[1]},${swMatch[1]}`;
+                textLogs.push(textRow);
+                
+                // --- FEATURE: Continuous LocalStorage Backup ---
+                // Saves the array to browser memory every single reading
+                localStorage.setItem('daq_text_logs', JSON.stringify(textLogs));
+                
+                document.getElementById('log-count').textContent = textLogs.length - 1;
             }
 
             const banner = document.getElementById('alarm-banner');
