@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rig Telemetry DAQ</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-color: #1e1e1e;
+            --text-color: #ffffff;
+            --text-muted: #aaaaaa;
+            --coolant-color: #00cbd6;
+            --oil-color: #ff9f00;
+            --amb-color: #a0a0a0;
+            --alarm-color: #ff3333;
+        }
+
+        body {
+            margin: 0;
+            padding: 15px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        header {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        #connect-btn {
+            background-color: #2e7d32;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        #connect-btn.connected {
+            background-color: #c62828;
+        }
+
+        /* Alarm Banner */
+        #alarm-banner {
+            display: none;
+            width: 100%;
+            max-width: 600px;
+            background-color: rgba(255, 51, 51, 0.2);
+            border: 2px solid var(--alarm-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            text-align: center;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { box-shadow: 0 0 5px rgba(255,51,51,0.5); background-color: rgba(255, 51, 51, 0.1); }
+            to { box-shadow: 0 0 25px rgba(255,51,51,0.9); background-color: rgba(255, 51, 51, 0.4); }
+        }
+
+        #alarm-banner svg {
+            width: 50px;
+            height: 50px;
+            fill: var(--alarm-color);
+        }
+
+        #alarm-text {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #ffcccc;
+            margin-top: 5px;
+            text-transform: uppercase;
+        }
+
+        /* Gauge Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            width: 100%;
+            max-width: 600px;
+            flex-grow: 1;
+        }
+
+        .card {
+            background-color: var(--card-color);
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            position: relative;
+            border: 1px solid #2a2a2a;
+        }
+
+        .card.alarm-active {
+            border: 2px solid var(--alarm-color);
+            background-color: rgba(255, 51, 51, 0.05);
+        }
+
+        .label {
+            font-size: 0.9rem;
+            font-weight: bold;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            letter-spacing: 0.5px;
+        }
+
+        /* SVG Dial Styling */
+        .gauge-svg {
+            width: 85%;
+            height: auto;
+            max-width: 140px;
+        }
+
+        .bg-track {
+            fill: none;
+            stroke: #2d2d2d;
+            stroke-width: 8;
+        }
+
+        .value-track {
+            fill: none;
+            stroke-width: 8;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 0.3s ease;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        .digital-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-top: 5px;
+            font-family: monospace;
+        }
+
+        .unit {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: normal;
+            margin-left: 2px;
+        }
+
+        footer {
+            margin-top: 15px;
+            font-family: monospace;
+            color: #555555;
+            font-size: 0.8rem;
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>DAQ Live Telemetry</h1>
+        <button id="connect-btn">CONNECT</button>
+    </header>
+
+    <!-- Master Overheating Alarm Display -->
+    <div id="alarm-banner">
+        <svg viewBox="0 0 24 24">
+            <path d="M1,21H23L12,2L1,21M13,18H11V16H13V18M13,14H11V10H13V14Z"/>
+        </svg>
+        <div id="alarm-text">OVERHEAT WARNING</div>
+    </div>
+
+    <!-- 4-Gauge Layout -->
+    <div class="grid">
+        <!-- Coolant Crossover -->
+        <div class="card" id="card-xover">
+            <div class="label">X-OVER COOLANT</div>
+            <svg class="gauge-svg" viewBox="0 0 100 100">
+                <circle class="bg-track" cx="50" cy="50" r="40"></circle>
+                <circle class="value-track" id="dial-xover" cx="50" cy="50" r="40" stroke="var(--coolant-color)"></circle>
+            </svg>
+            <div class="digital-value"><span id="val-xover">---</span><span class="unit">°F</span></div>
+        </div>
+
+        <!-- Upper Oil Line -->
+        <div class="card" id="card-oilu">
+            <div class="label">OIL-U (UPPER)</div>
+            <svg class="gauge-svg" viewBox="0 0 100 100">
+                <circle class="bg-track" cx="50" cy="50" r="40"></circle>
+                <circle class="value-track" id="dial-oilu" cx="50" cy="50" r="40" stroke="var(--oil-color)"></circle>
+            </svg>
+            <div class="digital-value"><span id="val-oilu">---</span><span class="unit">°F</span></div>
+        </div>
+
+        <!-- Lower Oil Line -->
+        <div class="card" id="card-oill">
+            <div class="label">OIL-L (LOWER)</div>
+            <svg class="gauge-svg" viewBox="0 0 100 100">
+                <circle class="bg-track" cx="50" cy="50" r="40"></circle>
+                <circle class="value-track" id="dial-oill" cx="50" cy="50" r="40" stroke="var(--oil-color)"></circle>
+            </svg>
+            <div class="digital-value"><span id="val-oill">---</span><span class="unit">°F</span></div>
+        </div>
+
+        <!-- Under-Hood Ambient -->
+        <div class="card" id="card-amb">
+            <div class="label">AMB ENCLOSURE</div>
+            <svg class="gauge-svg" viewBox="0 0 100 100">
+                <circle class="bg-track" cx="50" cy="50" r="40"></circle>
+                <circle class="value-track" id="dial-amb" cx="50" cy="50" r="40" stroke="var(--amb-color)"></circle>
+            </svg>
+            <div class="digital-value"><span id="val-amb">---</span><span class="unit">°F</span></div>
+        </div>
+    </div>
+
+    <footer>
+        <div>Runtime: <span id="val-time">0.0</span>s</div>
+        <div>Switch State: <span id="val-sw">-</span></div>
+    </footer>
+
+    <script>
+        const connectBtn = document.getElementById('connect-btn');
+        let port;
+        let reader;
+        let inputBuffer = "";
+
+        // SVG Dial Math Setup (Circumference of radius 40 = 251.2)
+        const CIRCUMFERENCE = 2 * Math.PI * 40;
+        document.querySelectorAll('.value-track').forEach(dial => {
+            dial.style.strokeDasharray = CIRCUMFERENCE;
+            dial.style.strokeDashoffset = CIRCUMFERENCE;
+        });
+
+        // Limits matched directly to your Arduino logic thresholds
+        const LIMITS = {
+            xover: { min: 100, max: 240, alarm: 225.0 },
+            oilu:  { min: 100, max: 270, alarm: 250.0 },
+            oill:  { min: 100, max: 270, alarm: 250.0 },
+            amb:   { min: 50,  max: 180, alarm: 999.0 } // No alarm trigger for ambient
+        };
+
+        connectBtn.addEventListener('click', async () => {
+            if (port) {
+                // Disconnect logic
+                try {
+                    reader.cancel();
+                    await port.close();
+                } catch (e) {}
+                port = null;
+                connectBtn.textContent = "CONNECT";
+                connectBtn.classList.remove('connected');
+                return;
+            }
+
+            try {
+                // Request serial port access from browser gesture
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                connectBtn.textContent = "DISCONNECT";
+                connectBtn.classList.add('connected');
+                
+                readSerialLoop();
+            } catch (err) {
+                alert("Serial Connection Failed: " + err.message);
+            }
+        });
+
+        async function readSerialLoop() {
+            const textDecoder = new TextDecoderStream();
+            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+            reader = textDecoder.readable.getReader();
+
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (value) {
+                        inputBuffer += value;
+                        // Handle line buffering
+                        let lines = inputBuffer.split("\n");
+                        inputBuffer = lines.pop(); // Keep incomplete last chunk in buffer
+
+                        for (let line of lines) {
+                            parseAndExtractData(line.trim());
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("Read error:", error);
+            } finally {
+                reader.releaseLock();
+            }
+        }
+
+        function parseAndExtractData(line) {
+            // Check for correct layout: "2.0s | X-OVER: 180.5 | OIL-U: ..."
+            if (!line.includes("X-OVER:")) return;
+
+            // Regex parsing loops matching the precise output string format
+            const tMatch = line.match(/^([\d.]+)s/);
+            const xoverMatch = line.match(/X-OVER:\s*([\d.]+)/);
+            const oiluMatch = line.match(/OIL-U:\s*([\d.]+)/);
+            const oillMatch = line.match(/OIL-L:\s*([\d.]+)/);
+            const ambMatch = line.match(/AMB:\s*([\d.]+)/);
+            const swMatch = line.match(/SW:\s*(\d+)/);
+
+            if (tMatch) document.getElementById('val-time').textContent = tMatch[1];
+            if (swMatch) document.getElementById('val-sw').textContent = swMatch[1] === "0" ? "TRIGGERED" : "OPEN";
+
+            let masterAlarmStatus = false;
+
+            // Update individual UI nodes
+            if (xoverMatch) masterAlarmStatus |= updateGauge('xover', parseFloat(xoverMatch[1]));
+            if (oiluMatch)  masterAlarmStatus |= updateGauge('oilu',  parseFloat(oiluMatch[1]));
+            if (oillMatch)  masterAlarmStatus |= updateGauge('oill',  parseFloat(oillMatch[1]));
+            if (ambMatch)   updateGauge('amb',   parseFloat(ambMatch[1]));
+
+            // Master Overheat Interlock
+            const banner = document.getElementById('alarm-banner');
+            if (masterAlarmStatus) {
+                banner.style.display = "block";
+            } else {
+                banner.style.display = "none";
+            }
+        }
+
+        function updateGauge(key, val) {
+            const textElement = document.getElementById(`val-${key}`);
+            const dialElement = document.getElementById(`dial-${key}`);
+            const cardElement = document.getElementById(`card-${key}`);
+            
+            textElement.textContent = val.toFixed(1);
+            
+            // Map value to gauge arc percentage
+            const cfg = LIMITS[key];
+            let percent = (val - cfg.min) / (cfg.max - cfg.min);
+            percent = Math.max(0, Math.min(1, percent)); // Clamp 0.0 to 1.0
+            
+            // Draw dial backward from circumference baseline
+            const offset = CIRCUMFERENCE - (percent * CIRCUMFERENCE);
+            dialElement.style.strokeDashoffset = offset;
+
+            // Check warning flags
+            if (val >= cfg.alarm) {
+                cardElement.classList.add('alarm-active');
+                dialElement.style.stroke = "var(--alarm-color)";
+                return true; // Alarm condition met
+            } else {
+                cardElement.classList.remove('alarm-active');
+                // Revert to original CSS theme color configuration
+                dialElement.style.stroke = `var(--${key === 'xover' ? 'coolant' : key === 'amb' ? 'amb' : 'oil'}-color)`;
+                return false;
+            }
+        }
+    </script>
+</body>
+</html>
