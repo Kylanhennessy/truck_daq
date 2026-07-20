@@ -167,7 +167,7 @@
             <button id="clear-btn">CLEAR</button>
             <button id="download-btn" disabled>SAVE .TXT</button>
             <button id="sim-btn">SIMULATE</button>
-            <button id="connect-btn">CONNECT</button>
+            <button id="connect-btn">APP READY</button>
         </div>
     </header>
 
@@ -227,11 +227,6 @@
         const simBtn = document.getElementById('sim-btn');
         const heartbeat = document.getElementById('heartbeat');
         
-        let port;
-        let reader;
-        let inputBuffer = "";
-        let wakeLock = null;
-
         let lastOilU = null;
         let lastOilL = null;
 
@@ -300,66 +295,24 @@
                 simInterval = setInterval(() => {
                     simTime += 2.0;
                     
-                    // Increment/Decrement temps
                     simXover += (0.8 * simDirection);
                     simOilU += (1.5 * simDirection);
                     simOilL += (1.2 * simDirection);
                     simAmb += (0.1 * simDirection);
                     
-                    // Reverse the thermal cycle if we hit the top or bottom of the swing
                     if (simOilU > 260 || simOilU < 200) simDirection *= -1;
 
-                    // Generate a fake serial string that matches what the Arduino outputs
                     const simLine = `${simTime.toFixed(1)}s X-OVER: ${simXover.toFixed(1)} OIL-U: ${simOilU.toFixed(1)} OIL-L: ${simOilL.toFixed(1)} AMB: ${simAmb.toFixed(1)} SW: 0`;
                     
-                    // Feed the fake string directly into the parser
                     parseAndExtractData(simLine);
-                }, 2000); // Trigger every 2 seconds
+                }, 2000); 
             }
         });
         // ------------------------
 
-        async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                }
-            } catch (err) {
-                console.warn('Wake Lock error:', err);
-            }
-        }
-
-        function releaseWakeLock() {
-            if (wakeLock !== null) {
-                wakeLock.release().then(() => { wakeLock = null; });
-            }
-        }
-
-        connectBtn.addEventListener('click', async () => {
-            if (port) {
-                try {
-                    reader.cancel();
-                    await port.close();
-                } catch (e) {}
-                port = null;
-                connectBtn.textContent = "CONNECT";
-                connectBtn.classList.remove('connected');
-                releaseWakeLock();
-                return;
-            }
-
-            try {
-                port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 9600 });
-                connectBtn.textContent = "DISCONNECT";
-                connectBtn.classList.add('connected');
-                downloadBtn.disabled = false;
-                
-                requestWakeLock();
-                readSerialLoop();
-            } catch (err) {
-                alert("Serial Connection Failed: " + err.message);
-            }
+        // The button is mostly visual now, as the Android App handles connection
+        connectBtn.addEventListener('click', () => {
+            alert("The Android app manages the USB connection automatically. Ensure your Nano is plugged in.");
         });
 
         downloadBtn.addEventListener('click', () => {
@@ -380,31 +333,26 @@
             document.body.removeChild(link);
         });
 
-        async function readSerialLoop() {
-            const textDecoder = new TextDecoderStream();
-            const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-            reader = textDecoder.readable.getReader();
+        // --- ANDROID BRIDGE (NEW LOGIC) ---
+        // The Java app will push chunks of serial data here
+        let inputBuffer = "";
+        window.onAndroidSerialData = function(dataChunk) {
+            inputBuffer += dataChunk;
+            let lines = inputBuffer.split("\n");
+            inputBuffer = lines.pop(); // Save the incomplete line back to the buffer
 
-            try {
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    if (value) {
-                        inputBuffer += value;
-                        let lines = inputBuffer.split("\n");
-                        inputBuffer = lines.pop();
-
-                        for (let line of lines) {
-                            parseAndExtractData(line.trim());
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("Read error:", error);
-            } finally {
-                reader.releaseLock();
+            for (let line of lines) {
+                parseAndExtractData(line.trim());
             }
-        }
+
+            // Visually update the UI to show connection is active
+            if (!connectBtn.classList.contains('connected')) {
+                connectBtn.textContent = "CONNECTED (NATIVE)";
+                connectBtn.classList.add('connected');
+                downloadBtn.disabled = false;
+            }
+        };
+        // ----------------------------------
 
         function parseAndExtractData(line) {
             if (!line.includes("X-OVER:")) return;
