@@ -308,79 +308,87 @@
                 }, 2000); 
             }
         });
-        // ------------------------
 
-        // --- CHROME WEB SERIAL API LOGIC ---
-        let port;
-        let reader;
-        let inputDone;
-        let inputStream;
+        // --- CAPACITOR USB SERIAL API LOGIC ---
+        const { UsbSerial } = window.Capacitor.Plugins;
+        let activePortId = null;
+        let dataSub = null;
+        let capacitorBuffer = "";
 
         connectBtn.addEventListener('click', async () => {
-            if (port) {
-                // Disconnect
+            // DISCONNECT LOGIC
+            if (activePortId) {
                 try {
-                    if (reader) {
-                        await reader.cancel();
-                    }
-                    if (inputDone) {
-                        await inputDone.catch(() => {});
-                    }
-                    await port.close();
-                    port = null;
+                    await UsbSerial.stopReading({ portId: activePortId });
+                    if (dataSub) await dataSub.remove();
+                    await UsbSerial.close({ portId: activePortId });
+                    
+                    activePortId = null;
                     connectBtn.textContent = "CONNECT";
                     connectBtn.classList.remove('connected');
                 } catch (e) {
-                    console.error(e);
+                    console.error("Disconnect error:", e);
                 }
                 return;
             }
 
+            // CONNECT LOGIC
             try {
-                // Request port and open it
-                port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 9600 });
+                const { devices } = await UsbSerial.listDevices();
+                if (devices.length === 0) {
+                    alert("No Nano found! Please plug it in via OTG.");
+                    return;
+                }
                 
+                const deviceId = devices[0].deviceId;
+                
+                // Triggers the native Android permission pop-up
+                const { granted } = await UsbSerial.requestPermission({ deviceId });
+                if (!granted) {
+                    alert("USB Permission Denied.");
+                    return;
+                }
+
+                // Open the port
+                const { portId } = await UsbSerial.open({
+                    deviceId,
+                    baudRate: 9600, 
+                    dataBits: 8,
+                    parity: 0,
+                    stopBits: 1
+                });
+                
+                activePortId = portId;
                 connectBtn.textContent = "DISCONNECT";
                 connectBtn.classList.add('connected');
                 downloadBtn.disabled = false;
 
-                const decoder = new TextDecoderStream();
-                inputDone = port.readable.pipeTo(decoder.writable);
-                inputStream = decoder.readable;
-                reader = inputStream.getReader();
+                // Listen for incoming data stream and rebuild the buffer
+                dataSub = await UsbSerial.addListener('data', (event) => {
+                    // Decode base64 packet
+                    const rawText = atob(event.data); 
+                    capacitorBuffer += rawText;
+                    
+                    // Split into lines based on newline characters
+                    let lines = capacitorBuffer.split("\n");
+                    
+                    // Pop the last element (incomplete line) back into the buffer
+                    capacitorBuffer = lines.pop(); 
+                    
+                    // Feed completed lines to your dashboard parser
+                    for (let line of lines) {
+                        parseAndExtractData(line.trim());
+                    }
+                });
 
-                readLoop();
+                // Start the stream
+                await UsbSerial.startReading({ portId });
+
             } catch (e) {
                 console.error("Connection error:", e);
-                alert("Connection failed. Make sure the device is plugged in and you have permission.");
+                alert("Connection failed: " + e);
             }
         });
-
-        async function readLoop() {
-            let buffer = "";
-            while (true) {
-                try {
-                    const { value, done } = await reader.read();
-                    if (value) {
-                        buffer += value;
-                        let lines = buffer.split("\n");
-                        buffer = lines.pop(); // Keep the incomplete line in the buffer
-                        
-                        for (let line of lines) {
-                            parseAndExtractData(line.trim());
-                        }
-                    }
-                    if (done) {
-                        reader.releaseLock();
-                        break;
-                    }
-                } catch (error) {
-                    console.error("Error reading data:", error);
-                    break;
-                }
-            }
-        }
         // -----------------------------------
 
         downloadBtn.addEventListener('click', () => {
