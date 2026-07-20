@@ -167,7 +167,7 @@
             <button id="clear-btn">CLEAR</button>
             <button id="download-btn" disabled>SAVE .TXT</button>
             <button id="sim-btn">SIMULATE</button>
-            <button id="connect-btn">APP READY</button>
+            <button id="connect-btn">CONNECT</button>
         </div>
     </header>
 
@@ -310,10 +310,78 @@
         });
         // ------------------------
 
-        // The button is mostly visual now, as the Android App handles connection
-        connectBtn.addEventListener('click', () => {
-            alert("The Android app manages the USB connection automatically. Ensure your Nano is plugged in.");
+        // --- CHROME WEB SERIAL API LOGIC ---
+        let port;
+        let reader;
+        let inputDone;
+        let inputStream;
+
+        connectBtn.addEventListener('click', async () => {
+            if (port) {
+                // Disconnect
+                try {
+                    if (reader) {
+                        await reader.cancel();
+                    }
+                    if (inputDone) {
+                        await inputDone.catch(() => {});
+                    }
+                    await port.close();
+                    port = null;
+                    connectBtn.textContent = "CONNECT";
+                    connectBtn.classList.remove('connected');
+                } catch (e) {
+                    console.error(e);
+                }
+                return;
+            }
+
+            try {
+                // Request port and open it
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                
+                connectBtn.textContent = "DISCONNECT";
+                connectBtn.classList.add('connected');
+                downloadBtn.disabled = false;
+
+                const decoder = new TextDecoderStream();
+                inputDone = port.readable.pipeTo(decoder.writable);
+                inputStream = decoder.readable;
+                reader = inputStream.getReader();
+
+                readLoop();
+            } catch (e) {
+                console.error("Connection error:", e);
+                alert("Connection failed. Make sure the device is plugged in and you have permission.");
+            }
         });
+
+        async function readLoop() {
+            let buffer = "";
+            while (true) {
+                try {
+                    const { value, done } = await reader.read();
+                    if (value) {
+                        buffer += value;
+                        let lines = buffer.split("\n");
+                        buffer = lines.pop(); // Keep the incomplete line in the buffer
+                        
+                        for (let line of lines) {
+                            parseAndExtractData(line.trim());
+                        }
+                    }
+                    if (done) {
+                        reader.releaseLock();
+                        break;
+                    }
+                } catch (error) {
+                    console.error("Error reading data:", error);
+                    break;
+                }
+            }
+        }
+        // -----------------------------------
 
         downloadBtn.addEventListener('click', () => {
             if (textLogs.length <= 1) return;
@@ -332,27 +400,6 @@
             link.click();
             document.body.removeChild(link);
         });
-
-        // --- ANDROID BRIDGE (NEW LOGIC) ---
-        // The Java app will push chunks of serial data here
-        let inputBuffer = "";
-        window.onAndroidSerialData = function(dataChunk) {
-            inputBuffer += dataChunk;
-            let lines = inputBuffer.split("\n");
-            inputBuffer = lines.pop(); // Save the incomplete line back to the buffer
-
-            for (let line of lines) {
-                parseAndExtractData(line.trim());
-            }
-
-            // Visually update the UI to show connection is active
-            if (!connectBtn.classList.contains('connected')) {
-                connectBtn.textContent = "CONNECTED (NATIVE)";
-                connectBtn.classList.add('connected');
-                downloadBtn.disabled = false;
-            }
-        };
-        // ----------------------------------
 
         function parseAndExtractData(line) {
             if (!line.includes("X-OVER:")) return;
