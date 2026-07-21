@@ -345,10 +345,13 @@
                 
                 // Explicitly check/request permission if not already granted by Android
                 if (!device.hasPermission) {
-                    const { granted } = await UsbSerial.requestPermission({ deviceId });
-                    if (!granted) {
-                        alert("USB Permission Denied.");
-                        return;
+                    try {
+                        const permResult = await UsbSerial.requestPermission({ deviceId });
+                        if (!permResult || !permResult.granted) {
+                            alert("Permission bridge returned: " + JSON.stringify(permResult) + "\n\nForcing connection anyway...");
+                        }
+                    } catch (permErr) {
+                        alert("Permission check error: " + permErr + "\n\nForcing connection anyway...");
                     }
                 }
 
