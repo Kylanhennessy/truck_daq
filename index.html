@@ -394,10 +394,12 @@
                 // Start the stream
                 await UsbSerial.startReading({ portId });
 
-            } catch (e) {
-                console.error("Connection error:", e);
-                alert("Connection failed: " + JSON.stringify(e));
-            }
+           } catch (e) {
+    console.error("Connection error:", e);
+    // Extract actual message if it's an Error object or string
+    const errorMsg = (e instanceof Error) ? e.message : (e.error || e.toString() || JSON.stringify(e));
+    alert("CRITICAL FAIL: " + errorMsg);
+}
         });
         // -----------------------------------
 
