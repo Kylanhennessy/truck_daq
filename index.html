@@ -340,25 +340,35 @@
                     return;
                 }
                 
-                const deviceId = devices[0].deviceId;
+                const device = devices[0];
+                const deviceId = device.deviceId;
                 
-                // Triggers the native Android permission pop-up
-                const { granted } = await UsbSerial.requestPermission({ deviceId });
-                if (!granted) {
-                    alert("USB Permission Denied.");
-                    return;
+                // Explicitly check/request permission if not already granted by Android
+                if (!device.hasPermission) {
+                    const { granted } = await UsbSerial.requestPermission({ deviceId });
+                    if (!granted) {
+                        alert("USB Permission Denied.");
+                        return;
+                    }
                 }
 
-                // Open the port
+                // STEP 1: Open the port using ONLY deviceId and portNum
                 const { portId } = await UsbSerial.open({
                     deviceId,
-                    baudRate: 9600, 
-                    dataBits: 8,
-                    parity: 0,
-                    stopBits: 1
+                    portNum: 0
                 });
                 
                 activePortId = portId;
+
+                // STEP 2: Configure serial parameters separately
+                await UsbSerial.setParameters({
+                    portId,
+                    baudRate: 9600,
+                    dataBits: 8,
+                    stopBits: 1,
+                    parity: 'none'
+                });
+
                 connectBtn.textContent = "DISCONNECT";
                 connectBtn.classList.add('connected');
                 downloadBtn.disabled = false;
@@ -386,7 +396,7 @@
 
             } catch (e) {
                 console.error("Connection error:", e);
-                alert("Connection failed: " + e);
+                alert("Connection failed: " + JSON.stringify(e));
             }
         });
         // -----------------------------------
